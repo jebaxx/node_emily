@@ -288,13 +288,20 @@ class d_m():
 
     @staticmethod
     def read_sens_data():
+	logger = logging.getLogger(__name__)
 
 	try:
 	    with open('/tmp/sens_data.txt', 'r') as f:
 		return [float(d) for d in f.read().split(',')]
 	except:
-	    copyfile('/tmp/sens_data.txt', '/tmp/sens_data_err.txt')
-	    raise
+	    logger.info("read_sens_data: retrying")
+	    time.sleep(0.5)
+	    try:
+		with open('/tmp/sens_data.txt', 'r') as f:
+		    return [float(d) for d in f.read().split(',')]
+	    except:
+		copyfile('/tmp/sens_data.txt', '/tmp/sens_data_err.txt')
+		raise
 
     #
     #  (periodical) refresh display
@@ -378,7 +385,6 @@ try:
 	    m_time = (time.time()) // 60
 
 	    logger.debug("Do refresh Display")
-	    time.sleep(0.05)
 	    d_m.refresh_display()
 	    try:
 		with open('/tmp/pipe', 'w') as f:

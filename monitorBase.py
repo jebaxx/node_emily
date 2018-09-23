@@ -268,26 +268,28 @@ class hsd:
     def polling():
 
 	logger = logging.getLogger(__name__)
-	if hsd._mode == 1 and hsd._t_detect != None :
+	if hsd._mode == 0 or hsd._t_detect == None :
+	    # there is nothin to do in this condition
+	    return
 
-	    if hsd._is_someone :
-		# acquired
-		if time.time() - hsd._t_detect > 10 :
-		    hsd._is_someone = 0
-		    hsd._t_detect = None
-		    logger.debug("hsd: leaved")
-
-	    elif (hsd._t_confirming == None) or (hsd._t_detect - hsd._t_confirming > 3.0) :
-		# first event
-		hsd._t_confirming = hsd._t_detect
+	if hsd._is_someone :
+	    # aleady acquired
+	    if time.time() - hsd._t_detect > 10 :
+		hsd._is_someone = 0
 		hsd._t_detect = None
-		logger.debug("hsd: confirming...")
+		logger.debug("hsd: leaved")
 
-	    else :
-		# subsequent event(now acquireing)
-		hsd._t_confirming = None
-		hsd._is_someone = 1
-		logger.debug("hsd: detect")
+	elif (hsd._t_confirming == None) or (hsd._t_detect - hsd._t_confirming > 3.0) :
+	    # first event
+	    hsd._t_confirming = hsd._t_detect
+	    hsd._t_detect = None
+	    logger.debug("hsd: confirming...")
+
+	else :
+	    # subsequent event(now acquireing)
+	    hsd._t_confirming = None
+	    hsd._is_someone = 1
+	    logger.debug("hsd: detect")
 
 	return
 
@@ -437,6 +439,10 @@ def sens_and_record(post_flag = 0):
 	f.write(str(temp_s)+','+ str(temp_c) + ',' + str(humidity))
 
     if post_flag :
+	while True:
+	    if time.time() % 60 < 30: break
+	    time.sleep(0.3)
+
 	postToGAE(temp_s, temp_c, humidity, detect_count)
 
 ######===============================================================#
@@ -445,7 +451,7 @@ def sens_and_record(post_flag = 0):
 #
 ######===============================================================#
 
-logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p2.log',level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p2.log',level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 
@@ -468,9 +474,9 @@ try:
 	m_a.polling()
 	c3_m.polling()
 
-	if (m_time != (time.time()) // 60):
-	    m_time = (time.time()) // 60
-
+	# start Mesurement 1 seconds before every minut
+	if (m_time != (time.time() + 1) // 60):
+	    m_time = (time.time() + 1) // 60
 	    sens_and_record(post_flag = 1)
 
 except KeyboardInterrupt:
