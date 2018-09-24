@@ -123,7 +123,7 @@ class c3_m:
 	c3_m.set_pixel(Lr, Lg, Lb)
 
 #====================================================================#
-#  LED ON / OFF  controller class
+#  LED display ON / OFF  controller class
 #====================================================================#
 
 class ld():
@@ -200,7 +200,8 @@ class hsd:
     _is_someone = 0
     _dtect_count = 0		# detection signal count in a minute
     _t_detect = None		# the time of sensor detect heat source(=null when _is_someone == false)
-    _t_confirming = None	# when the sensor detect twice within 3.0 second, it's regard as "detection". this store the first detection time.
+    _t_confirming = None	# when the sensor detect twice within 3.0 second, it's regard as "detection". 
+				#  This store the first detection time.
     _detect_count = 0
 
     @staticmethod
@@ -269,7 +270,7 @@ class hsd:
 
 	logger = logging.getLogger(__name__)
 	if hsd._mode == 0 or hsd._t_detect == None :
-	    # there is nothin to do in this condition
+	    # there is nothing to do in this condition
 	    return
 
 	if hsd._is_someone :
@@ -299,7 +300,8 @@ class hsd:
 
 class m_a:
 
-    _hsd_mode = 2
+    _hsd_mode = 2	# 0/1 : the same as hsd._mode, 
+			# 2   : hsd mechanism is closed because of stagnation of a message from UI module
     _t_received = 0
     _fifo = '/tmp/pipe'
     _led_current = 0
@@ -340,9 +342,12 @@ class m_a:
 	logger = logging.getLogger(__name__)
 
 	if m_a._hsd_mode == 2:
+            # hsd is closed. 
+            # This could be changed by a reconnected UI module.
 	    return
 
 	if time.time() - m_a._t_received > 125:
+            # UI module is not active
 	    if m_a._hsd_mode != 2:
 		logger.warning("fifo timeout... hsd is closed")
 		m_a._hsd_mode = 2
@@ -351,6 +356,7 @@ class m_a:
 		ld.display_sw(0)
 	else:
 	    if m_a._led_current != hsd._is_someone :
+		# UI module change the hsd_mode
 		m_a._led_current = hsd._is_someone
 		if m_a._led_current == 1 :
 		    logger.debug("led ON");
@@ -392,15 +398,26 @@ def measure_T_H():
     temp_s   = ( 175 * (data[0] * 256 + data[1]) / 65535.0) - 45
     humidity =   100 * (data[3] * 256 + data[4]) / 65535.0
 
-#    logger.debug(str(temp_s) + ":" + str(humidity))
     logger.debug("{:05.2f}C {:04.1f}%".format(temp_s, humidity))
 
     return temp_s, humidity
 
 #
+#   write sensed data to the data file and the server
+#
+def sens_and_record():
+
+    (temp_s, humidity) = measure_T_H()
+    temp_c = get_cpu_thermal()
+
+    with open('/tmp/sens_data.txt', 'w') as f:
+	f.write(str(temp_s)+','+ str(temp_c) + ',' + str(humidity))
+
+    return temp_s, temp_c, humidity
+
+#
 #   POST to GAE
 #
-
 def postToGAE(temp_s, temp_c, humidity, sensCount):
 
     logger = logging.getLogger(__name__)
@@ -426,25 +443,6 @@ def postToGAE(temp_s, temp_c, humidity, sensCount):
 
     logger.debug("response.code = %d" % response.status_code)
 
-#
-#   write sensed data to the data file and the server
-#
-def sens_and_record(post_flag = 0):
-
-    (temp_s, humidity) = measure_T_H()
-    temp_c = get_cpu_thermal()
-    detect_count = hsd.get_detect_count()
-
-    with open('/tmp/sens_data.txt', 'w') as f:
-	f.write(str(temp_s)+','+ str(temp_c) + ',' + str(humidity))
-
-    if post_flag :
-	while True:
-	    if time.time() % 60 < 30: break
-	    time.sleep(0.3)
-
-	postToGAE(temp_s, temp_c, humidity, detect_count)
-
 ######===============================================================#
 #
 #  Main Module
@@ -463,9 +461,10 @@ hsd.init()
 m_a.init()
 c3_m.init(__i2c)
 #
-sens_and_record(post_flag = 0)
+sens_and_record()
 
-m_time = (time.time() // 60)
+m_time = time.time() // 60
+s_time = m_time
 
 try:
     while 1:
@@ -474,10 +473,17 @@ try:
 	m_a.polling()
 	c3_m.polling()
 
-	# start Mesurement 1 seconds before every minut
-	if (m_time != (time.time() + 1) // 60):
-	    m_time = (time.time() + 1) // 60
-	    sens_and_record(post_flag = 1)
+	# start Mesurement 2 seconds before every minut
+	if (m_time != (time.time() + 2) // 60):
+	    m_time = (time.time() + 2) // 60
+            logger.debug("main: start measuring [{}]".format(time.time()))
+	    (temp_s, temp_c, humidity) = sens_and_record()
+
+	# Send mesured data to the server every minut
+	if s_time != (time.time() // 60):
+	    s_time = m_time
+            logger.debug("main: start posting [{}]".format(time.time()))
+	    postToGAE(temp_s, temp_c, humidity, hsd.get_detect_count())
 
 except KeyboardInterrupt:
 
