@@ -356,7 +356,7 @@ class m_a:
 		ld.display_sw(0)
 	else:
 	    if m_a._led_current != hsd._is_someone :
-		# UI module change the hsd_mode
+		# hsd status is changed or UI module change the hsd_mode
 		m_a._led_current = hsd._is_someone
 		if m_a._led_current == 1 :
 		    logger.debug("led ON");
