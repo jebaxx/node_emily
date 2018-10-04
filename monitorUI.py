@@ -179,14 +179,11 @@ class d_m():
 			'      %H:%M %a',
 			'        %H:%M',
 			'          %H:%M' ]
-    _c_form_no = 0
 
     _sens_form = [	'{temp:05.2f}C   {hum:04.1f}%' ,
 			' {temp:05.2f}C   {hum:04.1f}%' ,
 			'  {temp:05.2f}C  {hum:04.1f}%' ]
 
-    _s_form_no = 0
-    _sc_form_no = 0
 
     @staticmethod
     def init(__i2c) :
@@ -264,28 +261,28 @@ class d_m():
 	logger = logging.getLogger(__name__)
 	if d_m._state == 'clock':
 	    if key_state & 0b001010 :
-		d_m._c_form_no += 1
-		if d_m._c_form_no == len(d_m._clock_form): d_m._c_form_no = 0
+		c_m._c['clock_style']['value'] += 1
+		if c_m._c['clock_style']['value'] == len(d_m._clock_form): c_m._c['clock_style']['value'] = 0
 	    elif key_state & 0b010100 :
-		d_m._c_form_no -= 1
-		if d_m._c_form_no == -1: d_m._c_form_no = len(d_m._clock_form) - 1
+		c_m._c['clock_style']['value'] -= 1
+		if c_m._c['clock_style']['value'] == -1: c_m._c['clock_style']['value'] = len(d_m._clock_form) - 1
 
 	    ld.clear_display()
 	    d_m.redraw_display()
 
 	elif d_m._state == 'sensor':
 	    if key_state & 0b000010 :
-		d_m._sc_form_no += 1
-		if d_m._sc_form_no == len(d_m._clock_form)+1 : d_m._sc_form_no = 0
+		c_m._c['sens_style']['clock']['value'] += 1
+		if c_m._c['sens_style']['clock']['value'] == len(d_m._clock_form)+1 : c_m._c['sens_style']['clock']['value'] = 0
 	    elif key_state & 0b000100 :
-		d_m._sc_form_no -= 1
-		if d_m._sc_form_no == -1 : d_m._sc_form_no = len(d_m._clock_form)
+		c_m._c['sens_style']['clock']['value'] -= 1
+		if c_m._c['sens_style']['clock']['value'] == -1 : c_m._c['sens_style']['clock']['value'] = len(d_m._clock_form)
 	    elif key_state & 0b001000 :
-		d_m._s_form_no += 1
-		if d_m._s_form_no == len(d_m._sens_form) : d_m._s_form_no = 0
+		c_m._c['sens_style']['sens']['value'] += 1
+		if c_m._c['sens_style']['sens']['value'] == len(d_m._sens_form) : c_m._c['sens_style']['sens']['value'] = 0
 	    elif key_state & 0b010000 :
-		d_m._s_form_no -= 1
-		if d_m._s_form_no == -1 : d_m._s_form_no = len(d_m._sens_form) - 1
+		c_m._c['sens_style']['sens']['value'] -= 1
+		if c_m._c['sens_style']['sens']['value'] == -1 : c_m._c['sens_style']['sens']['value'] = len(d_m._sens_form) - 1
 
 	    d_m.redraw_display()
 
@@ -297,7 +294,7 @@ class d_m():
 
 	ld.clear_display()
 	ld.cursor_sw(0)
-	if d_m._state == 'clock' or d_m._sc_form_no == 0 : ld.set_double_height(1)
+	if d_m._state == 'clock' or c_m._c['sens_style']['clock']['value'] == 0 : ld.set_double_height(1)
 	else			: ld.set_double_height(0)
 
 	d_m.refresh_display()
@@ -326,14 +323,14 @@ class d_m():
     def refresh_display():
 
 	if d_m._state == 'clock':
-	    ld.write_char(datetime.now().strftime(d_m._clock_form[d_m._c_form_no]), 0, 0)
+	    ld.write_char(datetime.now().strftime(d_m._clock_form[c_m._c['clock_style']['value']]), 0, 0)
 	elif d_m._state == 'sensor':
 	    temp, temp_c, hum = d_m.read_sens_data()
-	    if d_m._sc_form_no != 0 :
-		ld.write_char(datetime.now().strftime(d_m._clock_form[d_m._sc_form_no-1]), 0, 0)
-		ld.write_char(d_m._sens_form[d_m._s_form_no].format(temp=temp, hum=hum), 1, 0)
+	    if c_m._c['sens_style']['clock']['value'] != 0 :
+		ld.write_char(datetime.now().strftime(d_m._clock_form[c_m._c['sens_style']['clock']['value']-1]), 0, 0)
+		ld.write_char(d_m._sens_form[c_m._c['sens_style']['sens']['value']].format(temp=temp, hum=hum), 1, 0)
 	    else :
-		ld.write_char(d_m._sens_form[d_m._s_form_no].format(temp=temp, hum=hum), 0, 0)
+		ld.write_char(d_m._sens_form[c_m._c['sens_style']['sens']['value']].format(temp=temp, hum=hum), 0, 0)
 	elif d_m._state == 'config':
 	    c_m.refresh_display()
 	else:
@@ -354,13 +351,13 @@ class d_m():
 class c_m:
         
     _c = OrderedDict()
-    _c['initial_dm_state'] = { 'value':'clock', 'candidate':('clock', 'sensor', 'alarm', 'config') }
-    _c['hsd_mode'] = { 'value':0 , 'range':( 0, 1 ) }
-    _c['clock_style'] = { 'value':1 , 'range':( 0, 10 ) }
+    _c['initial_dm_state'] = { 'value':'sensor', 'candidate':('clock', 'sensor', 'alarm', 'config') }
+    _c['hsd_mode'] = { 'value':1 , 'range':( 0, 1 ) }
+    _c['clock_style'] = { 'value':6 , 'range':( 0, 10 ) }
 
     _c['sens_style'] = OrderedDict()
-    _c['sens_style']['sens'] = { 'value':1, 'range':( 0, 3 ) } 
-    _c['sens_style']['clock'] = { 'value':1, 'range':( 0, 10) } 
+    _c['sens_style']['sens'] = { 'value':0, 'range':( 0, 3 ) } 
+    _c['sens_style']['clock'] = { 'value':7, 'range':( 0, 10) } 
 
     _c['alarm'] =  OrderedDict()
     _c['alarm']['alarm1'] = OrderedDict()
@@ -381,11 +378,13 @@ class c_m:
     _c['alarm']['alarm3']['h '] = { 'value':5, 'range':( 0, 23 ) }
     _c['alarm']['alarm3']['m '] = { 'value':50, 'range':( 0, 59 ) }
 
-    _vy0 = 0
+    _iter0 = None
+    _iter1 = None
+    _iter2 = None
+    _vy0 = None
     _vy1 = None
     _vy2 = None
     _sublevel = False
-    _level = None
 
     _cand = None
     _range = None
@@ -395,106 +394,114 @@ class c_m:
 	return c_m._c[conf_name]['value']
 
     @staticmethod
+    def rotate_vy0():
+	if c_m._vy0 == None:
+	    c_m._iter0 = iter(c_m._c.keys())
+
+	try:
+	    c_m._vy0 = next(c_m._iter0)
+	except StopIteration:
+	    c_m._iter0 = iter(c_m._c.keys())
+	    c_m._vy0 = next(c_m._iter0)
+
+    @staticmethod
+    def rotate_vy1():
+	if c_m._vy1 == None:
+	    c_m._iter1 = iter(c_m._c[c_m._vy0].keys())
+
+	try:
+	    c_m._vy1 = next(c_m._iter1)
+	except StopIteration:
+	    c_m._iter1 = iter(c_m._c[c_m._vy0].keys())
+	    c_m._vy1 = next(c_m._iter1)
+
+    @staticmethod
+    def rotate_vy2():
+	if c_m._vy2 == None:
+	    c_m._iter2 = iter(c_m._c[c_m._vy0][c_m._vy1].keys())
+
+	try:
+	    c_m._vy2 = next(c_m._iter2)
+	except StopIteration:
+	    c_m._iter2 = iter(c_m._c[c_m._vy0][c_m._vy1].keys())
+	    c_m._vy2 = next(c_m._iter2)
+
+    @staticmethod
+    def rotate_val_in_range(obj):
+	obj['value'] += 1
+	if obj['value'] > c_m._range[1]:
+	   obj['value'] = c_m._range[0]
+
+    @staticmethod
+    def rotate_val_from_cand(obj):
+	idx = c_m._cand.index(obj['value']) + 1
+	if idx >= len(c_m._cand) : idx = 0
+        obj['value'] = c_m._cand[idx]
+        
+
+    @staticmethod
     def key_event(key_state):
 	logger = logging.getLogger(__name__)
 
 	logger.debug("key_event:" + str(key_state) + " ******")
-	logger.debug("0: {} - {} - {} level={} sublevel={}".format(c_m._vy0,c_m._vy1,c_m._vy2,c_m._level,c_m._sublevel))
+	logger.debug("0: {} - {} - {} sublevel={}".format(c_m._vy0,c_m._vy1,c_m._vy2,c_m._sublevel))
 
 	if key_state & 0b000010 :
-	    logger.debug("level 0 next")
-	    c_m._vy0 += 1
+	    logger.debug("shift level_vy0 item")
+	    c_m.rotate_vy0()
 	    c_m._vy1 = None
 	    c_m._vy2 = None
-
-	    ld.clear_display()
-	    if not c_m.refresh_display() :
-		c_m._vy0 = 0
-		c_m.refresh_display()
+	    c_m._range = c_m._c[c_m._vy0].get('range')
+	    c_m._cand  = c_m._c[c_m._vy0].get('candidate')
+	    c_m._sublevel = not ('value' in c_m._c[c_m._vy0]) 
 
 	elif key_state & 0b000100 :
-	    if c_m._level >= 1 or (c_m._level == 0 and c_m._sublevel):
-		logger.debug("level 1 next")
-		if c_m._vy1 == None : c_m._vy1 = 0
-		else:		  c_m._vy1 += 1
+	    if c_m._vy1 is not None or (c_m._vy1 is None and c_m._sublevel):
+		logger.debug("shift level_vy1 item")
+		c_m.rotate_vy1()
 		c_m._vy2 = None
+		c_m._range = c_m._c[c_m._vy0][c_m._vy1].get('range')
+		c_m._cand  = c_m._c[c_m._vy0][c_m._vy1].get('candidate')
+		c_m._sublevel = not ('value' in c_m._c[c_m._vy0][c_m._vy1]) 
 
-	    elif c_m._level == 0 and not c_m._sublevel:
-		logger.debug("level 1 value select")
-		prim_key = c_m._c.keys()[c_m._vy0]
+	    elif c_m._vy1 is None and not c_m._sublevel:
+		logger.debug("change the value of level_vy0")
 
 		if c_m._range is not None:
-		    c_m._c[prim_key]['value'] += 1
-		    if c_m._c[prim_key]['value'] > c_m._range[1]:
-			c_m._c[prim_key]['value'] = c_m._range[0]
-
+		    c_m.rotate_val_in_range(c_m._c[c_m._vy0])
 		if c_m._cand is not None:
-		    idx = c_m._cand.index(c_m._c[prim_key]['value']) + 1
-		    if idx == len(c_m._cand): idx = 0
-		    c_m._c[prim_key]['value'] = c_m._cand[idx]
-
-	    ld.clear_display()
-	    if not c_m.refresh_display() :
-		c_m._vy1 = 0
-		logger.debug("key_event: retry")
-		c_m.refresh_display()
+		    c_m.rotate_val_from_cand(c_m._c[c_m._vy0])
+	    else: return
 
 	elif key_state & 0b001000 :
-	    if c_m._level == 2 or (c_m._level == 1 and c_m._sublevel):
-		logger.debug("level2 next")
-		if c_m._vy2 == None : c_m._vy2 = 0
-		else:		  c_m._vy2 += 1
+	    if c_m._vy2 is not None or (c_m._vy1 is not None and c_m._sublevel):
+		logger.debug("shift level2 item")
+		c_m.rotate_vy2()
+		c_m._range = c_m._c[c_m._vy0][c_m._vy1][c_m._vy2].get('range')
+		c_m._cand  = c_m._c[c_m._vy0][c_m._vy1][c_m._vy2].get('candidate')
+		c_m._sublevel = not ('value' in c_m._c[c_m._vy0][c_m._vy1][c_m._vy2]) 
 
-	    elif c_m._level == 1 and not c_m._sublevel:
-		logger.debug("level2 value select")
-		prim_key = c_m._c.keys()[c_m._vy0]
-		prim_obj = c_m._c[prim_key]
-		second_key = prim_obj.keys()[c_m._vy1]
-		second_obj = prim_obj[second_key]
+	    elif c_m._vy1 is not None and not c_m._sublevel:
+		logger.debug("change the value of level_vy1")
 
 		if c_m._range is not None:
-		    second_obj['value'] += 1
-		    if second_obj['value'] > c_m._range[1]:
-			second_obj['value'] = c_m._range[0]
-
+		    c_m.rotate_val_in_range(c_m._c[c_m._vy0][c_m._vy1])
 		if c_m._cand is not None:
-		    idx = c_m._cand.index(second_obj['value']) + 1
-		    if idx == len(c_m._cand): idx = 0
-		    second_obj['value'] = c_m._cand[idx]
-
-	    ld.clear_display()
-	    if not c_m.refresh_display() :
-		c_m._vy2 = 0
-		logger.debug("key_event: retry")
-		c_m.refresh_display()
+		    c_m.rotate_val_from_cand(c_m._c[c_m._vy0][c_m._vy1])
+	    else: return
 
 	elif key_state & 0b010000:
-	    if c_m._level != 2 or c_m._sublevel: return
-	    logger.debug("level3 value select")
+	    if c_m._vy2 is not None and not c_m._sublevel:
+		logger.debug("change the value of level_vy2")
 
-	    prim_key = c_m._c.keys()[c_m._vy0]
-	    prim_obj = c_m._c[prim_key]
-	    second_key = prim_obj.keys()[c_m._vy1]
-	    second_obj = prim_obj[second_key]
-	    third_key = second_obj.keys()[c_m._vy2]
-	    third_obj = second_obj[third_key]
+		if c_m._range is not None:
+		    c_m.rotate_val_in_range(c_m._c[c_m._vy0][c_m._vy1][c_m._vy2])
+		if c_m._cand is not None:
+		    c_m.rotate_val_from_cand(c_m._c[c_m._vy0][c_m._vy1][c_m._vy2])
+	    else: return
 
-	    if c_m._range is not None:
-		logger.debug("  range= ( {} - {} )".format(c_m._range[0], c_m._range[1]))
-		third_obj['value'] += 1
-		if third_obj['value'] > c_m._range[1]:
-		    third_obj['value'] = c_m._range[0]
-		logger.debug("next value = " + str(third_obj['value']) + "(r)")
-
-	    if c_m._cand is not None:
-		logger.debug("  cand = ( {} / {} / ...)".format(c_m._cand[0], c_m._cand[1]))
-		idx = c_m._cand.index(third_obj['value']) + 1
-		if idx == len(c_m._cand): idx = 0
-		third_obj['value'] = c_m._cand[idx]
-		logger.debug("next value = " + str(third_obj['value']) + "(c)")
-
-	    ld.clear_display()
-	    c_m.refresh_display()
+	ld.clear_display()
+	c_m.refresh_display()
 
     @staticmethod
     def redraw_display():
@@ -504,104 +511,62 @@ class c_m:
 
     @staticmethod
     def refresh_display():
+
 	logger = logging.getLogger(__name__)
 
 	logger.debug("refresh_display")
-	logger.debug("1: {} - {} - {} level={} sublevel={}".format(c_m._vy0,c_m._vy1,c_m._vy2,c_m._level,c_m._sublevel))
-	if len(c_m._c.keys()) <= c_m._vy0: return False
-	prim_key = c_m._c.keys()[c_m._vy0]
-	prim_obj = c_m._c[prim_key]
-	n_title  = None
-	n_value  = None
-	n_subtitles = None
-	n_titles = None
-	n_objs   = None
-	c_m._cand = None
-	c_m._range = None
+	logger.debug("1: {} - {} - {} sublevel={}".format(c_m._vy0,c_m._vy1,c_m._vy2,c_m._sublevel))
 
-	if 'value' in prim_obj:
-	    #single value
-	    #
-	    n_title = prim_key
-	    n_value = prim_obj['value']
-	    c_m._cand  = prim_obj.get('candidate')
-	    c_m._range = prim_obj.get('range')
-	    c_m._level = 0
-	    c_m._sublevel = False
-	else:
-	    #multi value
-	    #
-	    if (c_m._vy1 == None): 
-		n_title = prim_key
-		n_subtitles = prim_obj.keys()
-		c_m._level = 0
-		c_m._sublevel = True
+	if c_m._vy0 is None: c_m.rotate_vy0()
+
+	if c_m._vy2 is not None:
+	    logger.debug("hierical-2")
+	    n_objs = c_m._c[c_m._vy0][c_m._vy1]
+	    n_vx = 0
+	    for t_key, t_obj in n_objs.items():
+		ld.write_char(t_key, 0, n_vx)
+		ld.write_char(str(t_obj['value']), 1, n_vx)
+		n_objs[t_key]['vx'] = n_vx
+		n_vx += len(t_key) + 1
+
+	    ld.set_location(1, int(n_objs[c_m._vy2]['vx']))
+	    ld.cursor_sw(1)
+
+        elif c_m._vy1 is not None:
+	    if c_m._sublevel:
+		logger.debug("hierical-1")
+		ld.cursor_sw(0)
+		ld.write_char(c_m._vy1 + ' >', 0, 0)
+		n_vx = 0
+		for t_key in c_m._c[c_m._vy0][c_m._vy1].keys():
+		   ld.write_char(t_key, 1, n_vx)
+		   n_vx += len(t_key) + 1
+
 	    else:
-		if len(prim_obj.keys()) <= c_m._vy1: return False
-		second_key = prim_obj.keys()[c_m._vy1]
-		second_obj = prim_obj[second_key]
+		logger.debug("val select(multi)")
+		ld.write_char(c_m._vy1, 0, 0)
+		ld.write_char(str(c_m._c[c_m._vy0][c_m._vy1]['value']), 1, 0)
 
-		if 'value' in second_obj:
-		    n_title = second_key
-		    n_value = second_obj['value']
-		    c_m._cand  = second_obj.get('candidate')
-		    c_m._range = second_obj.get('range')
-		    c_m._level = 1
-		    c_m._sublevel = False
-		else:
-		    #hierarchal value
-		    #
-		    if (c_m._vy2 == None):
-			logger.debug("hierical-1")
-			n_title = second_key
-			n_subtitles = []
-			for third_obj in second_obj.values():
-			    n_subtitles.append(str(third_obj['value']))
-			c_m._level = 1
-			c_m._sublevel = True
-		    else:
-			logger.debug("hierical-2")
-			if len(second_obj.keys()) <= c_m._vy2: return False
-			n_titles = []
-			n_objs = OrderedDict()
-			n_vx = 0
-			for t_key, t_obj in second_obj.items():
-			    n_titles.append(t_key)
-			    n_objs[t_key] = t_obj
-			    n_objs[t_key]['vx'] = n_vx
-			    n_vx += len(t_key) + 1
-			t_key = n_titles[c_m._vy2]
-			c_m._range = n_objs[t_key].get('range')
-			c_m._cand  = n_objs[t_key].get('candidate')
-			c_m._level = 2
-			c_m._sublevel = False
-
-	logger.debug("2: {} - {} - {} level={} sublevel={}".format(c_m._vy0,c_m._vy1,c_m._vy2,c_m._level,c_m._sublevel))
-
-	ld.cursor_sw(0)
-	if n_title is not None:
-	    ld.write_char(n_title, 0, 0)
-	if n_titles is not None:
-	    for title in n_titles:
-		n_vx = n_objs[title]['vx']
-		ld.write_char(title, 0, n_vx)
-		ld.write_char(str(n_objs[title]['value']), 1, n_vx)
 		ld.set_location(1, 0)
-	if n_value is not None: 
-	    ld.write_char(str(n_value), 1, 0)
-	    ld.set_location(1, 0)
-	    ld.cursor_sw(1)
-	if n_subtitles is not None:
-	    vx = 0
-	    for subtitle in n_subtitles:
-		ld.write_char(str(subtitle), 1, vx)
-		vx += len(subtitle) + 1
-	if n_objs is not None:
-	    t_key = n_titles[c_m._vy2]
-	    ld.set_location(1, int(n_objs[t_key]['vx']))
-	    ld.cursor_sw(1)
+		ld.cursor_sw(1)
 
-	return True
+	else:
+	    if c_m._sublevel:
+		logger.debug("item select(multi)")
+		ld.cursor_sw(0)
+		ld.write_char(c_m._vy0 + ' >', 0, 0)
+		n_vx = 0
+		for t_key in c_m._c[c_m._vy0].keys():
+		   ld.write_char(t_key, 1, n_vx)
+		   n_vx += len(t_key) + 1
+
+	    else:
+		logger.debug("value select(single)")
+		ld.write_char(c_m._vy0, 0, 0)
+		ld.write_char(str(c_m._c[c_m._vy0]['value']), 1, 0)
+
+		ld.set_location(1, 0)
+		ld.cursor_sw(1)
 
 ######################################################################
 #  MAIN
@@ -610,13 +575,13 @@ logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tm
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 
-
 __i2c = smbus.SMBus(1)
 ld.init(__i2c)
 
 d_m.init(__i2c)
 m_time = (time.time() // 60)
 
+hsd_mode = c_m.get('hsd_mode')
 time.sleep(5)
 try:
     with open('/tmp/pipe', 'w') as f:
