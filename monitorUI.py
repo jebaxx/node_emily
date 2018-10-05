@@ -336,15 +336,6 @@ class d_m():
 	else:
 	    ld.write_char('unknown', 0, 0)
 
-
-
-######################################################################
-#  Sub process (cooperate with monitorBase)
-#
-#	manage LED display and button devices
-#====================================================================#
-
-
 ######################################################################
 #  config manager class
 
@@ -395,36 +386,48 @@ class c_m:
 
     @staticmethod
     def rotate_vy0():
-	if c_m._vy0 == None:
-	    c_m._iter0 = iter(c_m._c.keys())
+	if c_m._vy0 == None: c_m._iter0 = iter(c_m._c.keys())
 
 	try:
 	    c_m._vy0 = next(c_m._iter0)
 	except StopIteration:
 	    c_m._iter0 = iter(c_m._c.keys())
 	    c_m._vy0 = next(c_m._iter0)
+
+	c_m._vy1 = None
+	c_m._vy2 = None
+	c_m._range = c_m._c[c_m._vy0].get('range')
+	c_m._cand  = c_m._c[c_m._vy0].get('candidate')
+	c_m._sublevel = not ('value' in c_m._c[c_m._vy0]) 
 
     @staticmethod
     def rotate_vy1():
-	if c_m._vy1 == None:
-	    c_m._iter1 = iter(c_m._c[c_m._vy0].keys())
+	if c_m._vy1 == None: c_m._iter1 = iter(c_m._c[c_m._vy0].keys())
 
 	try:
 	    c_m._vy1 = next(c_m._iter1)
 	except StopIteration:
 	    c_m._iter1 = iter(c_m._c[c_m._vy0].keys())
 	    c_m._vy1 = next(c_m._iter1)
+
+	c_m._vy2 = None
+	c_m._range = c_m._c[c_m._vy0][c_m._vy1].get('range')
+	c_m._cand  = c_m._c[c_m._vy0][c_m._vy1].get('candidate')
+	c_m._sublevel = not ('value' in c_m._c[c_m._vy0][c_m._vy1]) 
 
     @staticmethod
     def rotate_vy2():
-	if c_m._vy2 == None:
-	    c_m._iter2 = iter(c_m._c[c_m._vy0][c_m._vy1].keys())
+	if c_m._vy2 == None: c_m._iter2 = iter(c_m._c[c_m._vy0][c_m._vy1].keys())
 
 	try:
 	    c_m._vy2 = next(c_m._iter2)
 	except StopIteration:
 	    c_m._iter2 = iter(c_m._c[c_m._vy0][c_m._vy1].keys())
 	    c_m._vy2 = next(c_m._iter2)
+
+	c_m._range = c_m._c[c_m._vy0][c_m._vy1][c_m._vy2].get('range')
+	c_m._cand  = c_m._c[c_m._vy0][c_m._vy1][c_m._vy2].get('candidate')
+	c_m._sublevel = not ('value' in c_m._c[c_m._vy0][c_m._vy1][c_m._vy2]) 
 
     @staticmethod
     def rotate_val_in_range(obj):
@@ -449,20 +452,11 @@ class c_m:
 	if key_state & 0b000010 :
 	    logger.debug("shift level_vy0 item")
 	    c_m.rotate_vy0()
-	    c_m._vy1 = None
-	    c_m._vy2 = None
-	    c_m._range = c_m._c[c_m._vy0].get('range')
-	    c_m._cand  = c_m._c[c_m._vy0].get('candidate')
-	    c_m._sublevel = not ('value' in c_m._c[c_m._vy0]) 
 
 	elif key_state & 0b000100 :
 	    if c_m._vy1 is not None or (c_m._vy1 is None and c_m._sublevel):
 		logger.debug("shift level_vy1 item")
 		c_m.rotate_vy1()
-		c_m._vy2 = None
-		c_m._range = c_m._c[c_m._vy0][c_m._vy1].get('range')
-		c_m._cand  = c_m._c[c_m._vy0][c_m._vy1].get('candidate')
-		c_m._sublevel = not ('value' in c_m._c[c_m._vy0][c_m._vy1]) 
 
 	    elif c_m._vy1 is None and not c_m._sublevel:
 		logger.debug("change the value of level_vy0")
@@ -477,9 +471,6 @@ class c_m:
 	    if c_m._vy2 is not None or (c_m._vy1 is not None and c_m._sublevel):
 		logger.debug("shift level2 item")
 		c_m.rotate_vy2()
-		c_m._range = c_m._c[c_m._vy0][c_m._vy1][c_m._vy2].get('range')
-		c_m._cand  = c_m._c[c_m._vy0][c_m._vy1][c_m._vy2].get('candidate')
-		c_m._sublevel = not ('value' in c_m._c[c_m._vy0][c_m._vy1][c_m._vy2]) 
 
 	    elif c_m._vy1 is not None and not c_m._sublevel:
 		logger.debug("change the value of level_vy1")
