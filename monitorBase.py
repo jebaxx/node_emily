@@ -226,17 +226,18 @@ class hsd:
     @staticmethod
     def set_mode(new_mode) :
 	logger = logging.getLogger(__name__)
+	logger.debug("set_mode:" + str(new_mode))
 
 	if hsd._mode == new_mode:
 	    return
 
 	hsd._mode = new_mode
 	if hsd._mode== 0 :
-	    logger.info("set_mode:_is_someone = 1")
+	    logger.debug("set_mode:_is_someone = 1")
 	    hsd._is_someone = 1
-	else :
-	    logger.info("set_mode:_is_someone = 0")
-	    hsd._is_someone = 0
+#	else :
+#	    logger.debug("set_mode:_is_someone = 0")
+#	    hsd._is_someone = 0
 
     #
     # hsd callback
@@ -316,7 +317,7 @@ class m_a:
 	except EnvironmentError as ee:
 	    logger.info("fifo cannot create:" + str(ee.errno))
 	    if ee.errno != errno.EEXIST:
-		logger.error("fifo cnnot create" + ee.args)
+		logger.error("fifo cannot create" + ee.args)
 		raise
 
 	th = threading.Thread(target = m_a.fifo_listner)
@@ -328,7 +329,7 @@ class m_a:
 	logger = logging.getLogger(__name__)
 
 	while True:
-	    logger.debug("waiting fifo...");
+	    logger.debug("waiting fifo...")
 	    with open (m_a._fifo) as f:
 		data = f.read()
 		if len(data) == 0 : break
@@ -348,12 +349,11 @@ class m_a:
 
 	if time.time() - m_a._t_received > 125:
             # UI module is not active
-	    if m_a._hsd_mode != 2:
-		logger.warning("fifo timeout... hsd is closed")
-		m_a._hsd_mode = 2
-		m_a._led_current = 0
-		logger.debug("led OFF");
-		ld.display_sw(0)
+	    logger.warning("fifo timeout... hsd is closed")
+	    m_a._hsd_mode = 2
+	    m_a._led_current = 0
+	    logger.debug("led OFF");
+	    ld.display_sw(0)
 	else:
 	    if m_a._led_current != hsd._is_someone :
 		# hsd status is changed or UI module change the hsd_mode
@@ -378,7 +378,6 @@ def get_cpu_thermal():
     f.close()
 
     return temp_c
-
 
 #
 #   SHT-31 sensor read
@@ -449,7 +448,7 @@ def postToGAE(temp_s, temp_c, humidity, sensCount):
 #
 ######===============================================================#
 
-logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p2.log',level=logging.INFO)
+logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p2.log',level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 
@@ -462,6 +461,7 @@ m_a.init()
 c3_m.init(__i2c)
 #
 sens_and_record()
+logger.info("*** monitorBase_service *** has started")
 
 m_time = time.time() // 60
 s_time = m_time
@@ -473,7 +473,7 @@ try:
 	m_a.polling()
 	c3_m.polling()
 
-	# start Mesurement 2 seconds before every minut
+	# start Mesurement before 2 seconds of every minut
 	if (m_time != (time.time() + 2) // 60):
 	    m_time = (time.time() + 2) // 60
             logger.debug("main: start measuring [{}]".format(time.time()))
