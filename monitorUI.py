@@ -209,7 +209,7 @@ class d_m():
 
     I2CADDR_BTN  = 0x3f  # button shim I2C Address
     _key_state   = 0
-    _current_mode = '0'
+    _current_mode = '0'		# current hsd_mode
 
     REG_INPUT    = 0x00
     REG_OUTPUT   = 0x01
@@ -244,6 +244,7 @@ class d_m():
 	GPIO.setup( 27, GPIO.IN )
 	GPIO.add_event_detect( 27, GPIO.FALLING, callback = d_m.button_callback )
 	ld.init(__i2c)
+	d_m._current_mode = str(c_m.get('hsd_mode'))
 	if d_m._state == 'clock' or d_m._state == 'sensor' : d_m.redraw_display()
 	elif d_m._state == 'config' : c_m.redraw_display()
 	elif d_m._state == 'alarm' : al_a.redraw_display()
@@ -843,7 +844,7 @@ class al_a:
 	iter_q = iter(al_a._ordered_queue)
 	try:
 	    al_a._recent_val = al_a._ordered_queue[next(iter_q)]
-	except stopIteration::
+	except StopIteration:
 	    al_a._recent_val = None
 
 
@@ -899,14 +900,8 @@ ld.init(__i2c)
 d_m.init(__i2c)
 m_time = (time.time() // 60)
 
-hsd_mode = c_m.get('hsd_mode')
 time.sleep(5)
-try:
-    with open('/tmp/pipe', 'w') as f:
-	f.write(str(c_m.get('hsd_mode')))
-except EnvironmentError:
-    logger.error("pipe cannot open")
-    sys.exit()
+d_m.resume_hsd()
 
 try:
     while 1:
