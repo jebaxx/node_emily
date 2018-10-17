@@ -448,7 +448,7 @@ def postToGAE(temp_s, temp_c, humidity, sensCount):
 #
 ######===============================================================#
 
-logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p2.log',level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p2.log',level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 

@@ -250,17 +250,10 @@ class d_m():
 	elif d_m._state == 'alarm' : al_a.redraw_display()
 
     #
-    #  set configuration
-    #
-    @staticmethod
-    def set_state(new_state) :
-	d_m._state = new_state
-
-    #
     #   expected to be called periodically
     #
     @staticmethod
-    def polling() :
+    def polling(ts) :
 	pass
 
     #
@@ -280,7 +273,7 @@ class d_m():
 	    #
 	    # change _state
 	    #
-	    d_m.change_state()
+	    d_m.change_state(None)
 
 	if key_state & 0b011110 :
 	    if d_m._state == 'clock' or d_m._state == 'sensor' :
@@ -294,7 +287,7 @@ class d_m():
     #  Change d_m_status
     #
     @staticmethod
-    def change_state():
+    def change_state(newState):
 
 	logger = logging.getLogger(__name__)
 
@@ -302,9 +295,13 @@ class d_m():
 	    # the case of exit from 'config', it's needed to check changed items and treat them.
 	    c_m.check_modified_items()
 
-	i = d_m._states.index(d_m._state) + 1
-	if i == len(d_m._states): i = 0
-	d_m._state = d_m._states[i]
+	if newState == None:
+	    i = d_m._states.index(d_m._state) + 1
+	    if i == len(d_m._states): i = 0
+	    d_m._state = d_m._states[i]
+	else:
+	    d_m._state = newState
+
 	logger.debug("change_state:next_state="+d_m._state)
 
 	ld.clear_display()
@@ -465,7 +462,7 @@ class c_m:
     _b['alarm'] =  OrderedDict()
     _b['alarm']['alarm1'] = OrderedDict()
     _b['alarm']['alarm1']['sw '] = { 'value':'OFF', 'candidate':( 'ON', 'OFF' ) }
-    _b['alarm']['alarm1']['wek'] = { 'value':'wek', 'candidate':( 'mon', 'tue', 'wed', 'thr', 'fri', 'sat', 'sun', 'wek', 'hol') }
+    _b['alarm']['alarm1']['wek'] = { 'value':'wek', 'candidate':( 'mon', 'tue', 'wed', 'thr', 'fri', 'sat', 'sun', 'wek', 'hol', 'tst') }
     _b['alarm']['alarm1']['h '] = { 'value':6, 'range':( 0, 23 ) }
     _b['alarm']['alarm1']['m '] = { 'value':45, 'range':( 0, 59 ) }
 
@@ -629,7 +626,7 @@ class c_m:
 	logger = logging.getLogger(__name__)
 	logger.debug("check_modified_items")
 
-	print var_dump(c_m._c)
+#	print var_dump(c_m._c)
 	for lv0 in c_m._c:
 	    mod_val =  c_m._c[lv0].pop('mod', None)
 	    if mod_val != None:
@@ -719,20 +716,37 @@ class c_m:
 ######################################################################
 #  Alarm application
 
+from subprocess import Popen
+
 class al_a:
 
+    __i2c = None
     _mode = 'none'
     _cand = ('none', 'alarm', 'snooze')
+
+    # button status management
+    _submode = 0
+    _key_count = 0
+
     _queue = {}
     _ordered_queue = None
     _recent_val = None		# 直近のアラーム発動時刻
+    _recent_alarm = None
+    _start_time = 0		# Alarm鳴動開始時刻
+    _ts_monitor = 0		# 一回/Sec画面を更新するための時刻
 
+    #
+    #  init
+    #
     @staticmethod
-    def init():
+    def init(__i2c):
 	logger = logging.getLogger(__name__)
 	al_a.setAlarm(None)
+	al_a.__i2c = __i2c
 
-
+    #
+    #  key_event
+    #
     @staticmethod
     def key_event(key_status):
 	logger = logging.getLogger(__name__)
@@ -741,24 +755,29 @@ class al_a:
 	    # 'alarm'中にボタンを押されたら'snooze'に移行
 	    al_a._mode = 'snooze'
 	    al_a._submode = key_status
-	    al_a._keycount = 1
-	    al_a.stop_process()
-	    al_a.setAlarm()     # 次の鳴動時間まで待機
+	    al_a._key_count = 1
+	    al_a.stop_player()
+	    al_a.clear_speaker_level()
+	    al_a.setAlarm('snooze')     # 次の鳴動時間まで待機
+	    ld.clear_display()
+	    al_a.refresh_display()
 
 	elif al_a._mode == 'snooze':
 	    if al_a._submode == key_status:
-		al_a._keycount += 1
+		al_a._key_count += 1
 		# 'snooze'中に同じボタンを続けて3回押すと'snooze'解除とする
-		if al_a._keycount == 3:
+		if al_a._key_count == 3:
 		    al_a._submode = 0
-		    al_a._keycount = 0
+		    al_a._key_count = 0
+		    al_a.stop_player()
+		    al_a._mode = 'none'
 		    al_a.setAlarm(None)         # 今回の動作は終了させて次回を再スケジュール
+		    d_m.change_state(c_m.get('initial_dm_state'))
 	    else:
-		# 途中で違うボタンが押されたらカウンターを１に戻してやり直し
+		# 3回押される前に違うボタンが押されたらカウンターを１に戻してやり直し
 		al_a._submode = key_status
-		al_a._keycount = 1
+		al_a._key_count = 1
 
-	al_a.refresh_display()
         
     @staticmethod
     def redraw_display():
@@ -766,44 +785,92 @@ class al_a:
 	ld.set_double_height(0)
 	al_a.refresh_display()
 
-
+    #
+    #  refresh_display
+    #
     @staticmethod
     def refresh_display():
 
 	sht = { 'alarm1':'A1', 'alarm2':'A2', 'alarm3':'A3' }	# 省略名
 
 	logger = logging.getLogger(__name__)
-	iter_q = iter(al_a._ordered_queue)
-	try:
-	    next_key = next(iter_q)
-	    next_val = al_a._ordered_queue[next_key]
-	    dt = datetime.fromtimestamp(next_val)
-	    next_time = dt.strftime(" %m/%d %H:%M")
-	    ld.write_char(sht[next_key] + next_time , 0, 0)
-	except StopIteration:
-	    ld.write_char(" - - -", 0, 0)
-	    return
+	if al_a._mode == 'alarm':
+	    # 動作中の表示
+	    ld.write_char('<< '+al_a._recent_alarm+' >>' , 0, 0)
+	    ld.write_char(datetime.now().strftime("%m/%d %H:%M"), 1, 0)
 
-	try:
-	    next_key = next(iter_q)
-	    next_val = al_a._ordered_queue[next_key]
-	    dt = datetime.fromtimestamp(next_val)
-	    next_time = dt.strftime(" %m/%d %H:%M")
-	    ld.write_char(sht[next_key] + next_time , 1, 0)
-	except StopIteration:
-	    ld.write_char(" - - -", 1, 0)
+	elif al_a._mode == 'snooze':
+	    # snooze待機中
+	    ld.write_char('<WAIT>  :'+sht[al_a._recent_alarm] , 0, 0)
+	    ld.write_char(str(int(al_a._recent_val - time.time())), 1, 0)
 
+	else:
+	    # 動作待ち状態での表示
+	    iter_q = iter(al_a._ordered_queue)
+	    try:
+		next_key = next(iter_q)
+		next_val = al_a._ordered_queue[next_key]
+		dt = datetime.fromtimestamp(next_val)
+		next_time = dt.strftime(" %m/%d %H:%M")
+		ld.write_char(sht[next_key] + next_time , 0, 0)
+	    except StopIteration:
+		ld.write_char(" - - -", 0, 0)
+		return
 
+	    try:
+		next_key = next(iter_q)
+		next_val = al_a._ordered_queue[next_key]
+		dt = datetime.fromtimestamp(next_val)
+		next_time = dt.strftime(" %m/%d %H:%M")
+		ld.write_char(sht[next_key] + next_time , 1, 0)
+	    except StopIteration:
+		ld.write_char(" - - -", 1, 0)
+
+    #
+    #  polling
+    #
     @staticmethod
-    def polling():
+    def polling(ts):
 	logger = logging.getLogger(__name__)
 
-	if al_a._mode == 'alarm': return
+	if al_a._mode == 'alarm': 
+	    if al_a._start_time + 60 < ts:
+		al_a.stop_player()
+		al_a._mode = 'snooze'
+		al_a.setAlarm('snooze')
+		d_m.change_state('alarm')
+	    elif d_m._state == 'alarm':
+		if al_a._ts_monitor != ts:
+		    ld.write_char(datetime.now().strftime("%m/%d %H:%M"), 1, 0)
+		    al_a._ts_monitor = ts
 
-	if al_a._rectnt_val is not None:
-	    if time.time() >= al_a._recent_val:
-		al_a._mode = 'alarm'
-		exec_player()
+	elif al_a._recent_val is not None and ts >= al_a._recent_val:
+	    al_a._mode = 'alarm'
+	    d_m.change_state('alarm')
+	    al_a._start_time = ts
+	    al_a.exec_player()
+
+	elif al_a._mode == 'snooze' and d_m._state == 'alarm':
+	    if al_a._ts_monitor != ts:
+		ld.write_char(str(int(al_a._recent_val - ts))+" ", 1, 0)
+		al_a._ts_monitor = ts
+
+    _cmd = ['/usr/bin/mpg321', '-g 100', '/home/pi/projects/monitor_project/rev2007.mp3']
+    _proc = None
+
+    @staticmethod
+    def exec_player():
+
+	logger = logging.getLogger(__name__)
+	try:
+	    al_a._proc = Popen(al_a._cmd)
+	except EnvironmentError:
+	    logger.error("exec sub process error")
+
+    @staticmethod
+    def stop_player():
+
+	al_a._proc.terminate()
 
     #
     # reschedule the alarm
@@ -813,40 +880,51 @@ class al_a:
 
 	logger = logging.getLogger(__name__)
 	logger.debug("setAlarm:"+str(alarm_name))
+
+	if alarm_name == 'snooze':
+	    dt = datetime.now()
+	    dt += timedelta(minutes=5)
+	    ts = time.mktime(dt.timetuple())
+	    al_a._recent_val = ts
+	    logger.debug("snooze:" +  str(ts))
+	    return                     # 'snooze'の場合は_recent_valのみを変更してqueueの中身は中身はそのまま
+
 	if alarm_name == None or alarm_name == 'alarm1':
 	    if c_m._c['alarm']['alarm1']['sw ']['value'] == 'ON':
 		ts = al_a.calc_next_alarm(c_m._c['alarm']['alarm1'])
 		al_a._queue['alarm1'] = ts
-		logger.debug("alarm1" +  str(ts))
+		logger.debug("alarm1:" +  str(ts))
 	    else:
 		ts = al_a._queue.pop('alarm1', None)
-		logger.debug("remove alarm1:"+ str(ts))
+		if ts != None: logger.debug("remove alarm1:"+ str(ts))
 
 	if alarm_name == None or alarm_name == 'alarm2':
 	    if c_m._c['alarm']['alarm2']['sw ']['value'] == 'ON':
 		ts = al_a.calc_next_alarm(c_m._c['alarm']['alarm2'])
 		al_a._queue['alarm2'] = ts
-		logger.debug("alarm1" +  str(ts))
+		logger.debug("alarm2:" +  str(ts))
 	    else:
 		ts = al_a._queue.pop('alarm2', None)
-		logger.debug("remove alarm2:"+ str(ts))
+		if ts != None: logger.debug("remove alarm2:"+ str(ts))
 
 	if alarm_name == None or alarm_name == 'alarm3':
 	    if c_m._c['alarm']['alarm3']['sw ']['value'] == 'ON':
 		ts = al_a.calc_next_alarm(c_m._c['alarm']['alarm3'])
 		al_a._queue['alarm3'] = ts
-		logger.debug("alarm1" +  str(ts))
+		logger.debug("alarm3:" +  str(ts))
 	    else:
 		ts = al_a._queue.pop('alarm3', None)
-		logger.debug("remove alarm3:"+ str(ts))
+		if ts != None: logger.debug("remove alarm3:"+ str(ts))
 
 	al_a._ordered_queue = OrderedDict(sorted(al_a._queue.items(), key=lambda x:x[1]))
+	print var_dump(al_a._ordered_queue)
 	iter_q = iter(al_a._ordered_queue)
 	try:
-	    al_a._recent_val = al_a._ordered_queue[next(iter_q)]
+	    al_a._recent_alarm = next(iter_q)
+	    al_a._recent_val = al_a._ordered_queue[al_a._recent_alarm]
 	except StopIteration:
-	    al_a._recent_val = None
-
+	    al_a._recent_alarm = None
+	    al_a._recent_val   = None
 
     @staticmethod
     def calc_next_alarm(alarm_info):
@@ -857,44 +935,63 @@ class al_a:
 	m  = alarm_info['m ']['value']
 	logger.debug(str(wk)+":"+str(h)+":"+str(m))
 	dt_now = datetime.now()
-	dt_al_1 = dt_now.replace(hour=h,minute=m,second=0,microsecond=0)
+	dt_al = dt_now.replace(hour=h,minute=m,second=0,microsecond=0)
+	########################################################################
+	if wk == 9:	# for alarm TEST 		今から1分後に設定
+	    dt_al = dt_now + timedelta(minutes=1)
+	    dt_al = dt_al.replace(second=0,microsecond=0)
+
+	########################################################################
 
 	if wk < 7:      # set specified day
 	    wk_diff = wk - dt_now.weekday()	# 今日とターゲット曜日の差分から次回を計算
 	    if wk_diff < 0 : wk_diff += 7
-	    dt_al_1 += timedelta(days=wk_diff)
+	    dt_al += timedelta(days=wk_diff)
 	    logger.debug("wd:wk_diff="+str(wk_diff))
-	    if dt_al_1 < dt_now: dt_al_1 += timedelta(days=7)
+	    if dt_al <= dt_now: dt_al += timedelta(days=7)
 
 	elif wk == 7:   # set week day
-	    wk_diffs1 = (0, 0, 0, 0, 0, 2, 1)	# 今日が何曜日かで次回までの日数が変わる
-	    wk_diffs2 = (1, 1, 1, 1, 3, 0, 0)	# 次を同じ日に鳴らす場合はこのリストは使わず
+	    wk_diffs1 = (0, 0, 0, 0, 0, 2, 1)	# 今日の曜日で次回までの日数を決定　次回が本日中になる可能性がある場合は0
+	    wk_diffs2 = (1, 1, 1, 1, 3, 0, 0)	# 次回が本日でなかった場合は更にこれをこれを足す
 	    wk_diff = wk_diffs1[dt_now.weekday()]
 	    logger.debug("wd:wk_diff="+str(wk_diff))
-	    dt_al_1 += timedelta(days=wk_diff)
-	    if dt_al_1 < dt_now: dt_al_1 += timedelta(days=wk_diff2[dt_now.weekday()])
+	    dt_al += timedelta(days=wk_diff)
+	    if dt_al <= dt_now: dt_al += timedelta(days=wk_diffs2[dt_now.weekday()])
 
 	elif wk == 8:   # set holyday
-	    wk_diffs1 = (5, 4, 3, 2, 1, 0, 6)	# 今日が何曜日かで次回までの日数が変わる
-	    wk_diffs2 = (0, 0, 0, 0, 0, 1, 0)	# 次を同じ日に鳴らす場合はこのリストは使わず
+	    wk_diffs1 = (5, 4, 3, 2, 1, 0, 0)	# 今日の曜日で次回までの日数を決定　次回が本日中になる可能性がある場合は0
+	    wk_diffs2 = (0, 0, 0, 0, 0, 1, 6)	# 次回が本日でなかった場合は更にこれをこれを足す
 	    wk_diff = wk_diffs1[dt_now.weekday()]
 	    logger.debug("wd:wk_diff="+str(wk_diff))
-	    dt_al_1 += timedelta(days=wk_diff)
-	    if dt_al_1 < dt_now: dt_al_1 += timedelta(days=wk_diffs2[dt_now.weekday()])
+	    dt_al += timedelta(days=wk_diff)
+	    if dt_al <= dt_now: dt_al += timedelta(days=wk_diffs2[dt_now.weekday()])
 
-	return time.mktime(dt_al_1.timetuple())
+	return time.mktime(dt_al.timetuple())
+
+    @staticmethod
+    def clear_speaker_level():
+        i2c_addr	= 0x54
+        ph_enable	= 0x00
+        ph_set_pwm_val	= 0x01
+        ph_update	= 0x16
+
+	al_a.__i2c.write_i2c_block_data(i2c_addr, ph_enable, [1])
+	al_a.__i2c.write_i2c_block_data(i2c_addr, ph_set_pwm_val, [0 for x in range(18)])
+	al_a.__i2c.write_i2c_block_data(i2c_addr, ph_update, [0xff])
+	al_a.__i2c.write_i2c_block_data(i2c_addr, ph_enable, [0])
 
 ######################################################################
 #  MAIN
 
-logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p3.log',level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p3.log',level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 
-c_m.init()
-al_a.init()
-
 __i2c = smbus.SMBus(1)
+
+c_m.init()
+al_a.init(__i2c)
+
 ld.init(__i2c)
 
 d_m.init(__i2c)
@@ -906,10 +1003,12 @@ d_m.resume_hsd()
 try:
     while 1:
 	time.sleep(0.25)
-	d_m.polling()
+	ts = time.time()
+	d_m.polling(ts)
+	al_a.polling(ts)
 
-	if (m_time != (time.time()) // 60):
-	    m_time = (time.time()) // 60
+	if (m_time != (ts) // 60):
+	    m_time = (ts) // 60
 
 	    logger.debug("Do refresh Display")
 	    d_m.refresh_display()
