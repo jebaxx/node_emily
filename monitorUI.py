@@ -507,9 +507,9 @@ class c_m:
 	    fh = open(c_m._conf_fname, 'r')
 	    c_m._c = pickle.loads(fh.read())
 	    fh.close()
-	    logger.debug("c_m.init: initialize from conf_file")
+	    logger.info("c_m.init: initialize from conf_file")
 	except IOError:
-	    logger.debug("c_m.init: initialize conf from _b")
+	    logger.info("c_m.init: initialize conf from _b")
 	    c_m._c = copy.deepcopy(c_m._b)
 
     @staticmethod
@@ -1019,7 +1019,7 @@ class al_a:
 ######################################################################
 #  MAIN
 
-logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p3.log',level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p3.log',level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 
