@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 import sys
+import os
 import logging
 import time
 import RPi.GPIO as GPIO
@@ -267,7 +268,6 @@ class d_m():
 	logger = logging.getLogger(__name__)
 	key_state = d_m._i2c.read_byte_data(d_m.I2CADDR_BTN, d_m.REG_INPUT)
 	key_state = ~key_state & 0b011111
-#	logger.debug("key_detect:" + str(key_state))
 
 	if (key_state & 0b000001) > 0 :
 	    #
@@ -304,8 +304,6 @@ class d_m():
 
 	logger.debug("change_state:next_state="+d_m._state)
 
-#	ld.clear_display()
-
 	if d_m._state == 'config':
 	    d_m.disable_hsd()
 	    c_m.redraw_display()
@@ -328,26 +326,31 @@ class d_m():
 	    if key_state & 0b001010 :
 		c_m._c['clock_style']['value'] += 1
 		if c_m._c['clock_style']['value'] == len(d_m._clock_form): c_m._c['clock_style']['value'] = 0
+		c_m.saveConfig()
 	    elif key_state & 0b010100 :
 		c_m._c['clock_style']['value'] -= 1
 		if c_m._c['clock_style']['value'] == -1: c_m._c['clock_style']['value'] = len(d_m._clock_form) - 1
+		c_m.saveConfig()
 
-#	    ld.clear_display()
 	    d_m.redraw_display()
 
 	elif d_m._state == 'sensor':
 	    if key_state & 0b000010 :
 		c_m._c['sens_style']['clock']['value'] += 1
 		if c_m._c['sens_style']['clock']['value'] == len(d_m._clock_form)+1 : c_m._c['sens_style']['clock']['value'] = 0
+		c_m.saveConfig()
 	    elif key_state & 0b000100 :
 		c_m._c['sens_style']['clock']['value'] -= 1
 		if c_m._c['sens_style']['clock']['value'] == -1 : c_m._c['sens_style']['clock']['value'] = len(d_m._clock_form)
+		c_m.saveConfig()
 	    elif key_state & 0b001000 :
 		c_m._c['sens_style']['sens']['value'] += 1
 		if c_m._c['sens_style']['sens']['value'] == len(d_m._sens_form) : c_m._c['sens_style']['sens']['value'] = 0
+		c_m.saveConfig()
 	    elif key_state & 0b010000 :
 		c_m._c['sens_style']['sens']['value'] -= 1
 		if c_m._c['sens_style']['sens']['value'] == -1 : c_m._c['sens_style']['sens']['value'] = len(d_m._sens_form) - 1
+		c_m.saveConfig()
 
 	    d_m.redraw_display()
 
@@ -389,6 +392,7 @@ class d_m():
     def refresh_display():
 
 	logger = logging.getLogger(__name__)
+	logger.debug('d_m.refresh_display:'+d_m._state)
 	if d_m._state == 'clock':
 	    ld.write_char(datetime.now().strftime(d_m._clock_form[c_m._c['clock_style']['value']]), 0, 0)
 	elif d_m._state == 'sensor':
@@ -447,6 +451,7 @@ class d_m():
 ######################################################################
 #  config manager class
 import copy
+import pickle
 
 class c_m:
         
@@ -482,6 +487,8 @@ class c_m:
 
     _c = {}
 
+    _conf_fname = "/home/pi/projects/monitor_project/_conf.pickle"
+
     _iter0 = None
     _iter1 = None
     _iter2 = None
@@ -495,7 +502,15 @@ class c_m:
 
     @staticmethod
     def init():
-	c_m._c = copy.deepcopy(c_m._b)
+	c_m._c = {}
+	try:
+	    fh = open(c_m._conf_fname, 'r')
+	    c_m._c = pickle.loads(fh.read())
+	    fh.close()
+	    logger.debug("c_m.init: initialize from conf_file")
+	except IOError:
+	    logger.debug("c_m.init: initialize conf from _b")
+	    c_m._c = copy.deepcopy(c_m._b)
 
     @staticmethod
     def get(conf_name):
@@ -626,27 +641,45 @@ class c_m:
 	logger = logging.getLogger(__name__)
 	logger.debug("check_modified_items")
 
-#	print var_dump(c_m._c)
+	isModified = False
 	for lv0 in c_m._c:
 	    mod_val =  c_m._c[lv0].pop('mod', None)
 	    if mod_val != None:
+		isModified = True
 		if lv0 == 'reset_settings':
 		    logger.debug("cmi: reset_settings")
+		    try:
+			os.remove(c_m._conf_fname)
+		    except OSError:
+			logger.debug("cmi: conf file not found")
+			pass
 		    c_m.init()
+		    al_a.setAlarm(None)
 		    return;
 	    if 'value' in c_m._c[lv0]: continue;
 
 	    for lv1 in c_m._c[lv0]:
 		mod_val = c_m._c[lv0][lv1].pop('mod', None)
-		if 'value' in c_m._c[lv0][lv1]: continue;
+		if mod_val is not None: isModified = True
+		if 'value' in c_m._c[lv0][lv1]:  continue;
 
 		logger.debug("cmi: check " + lv1)
 		for lv2 in c_m._c[lv0][lv1]:
 		    mod_val = c_m._c[lv0][lv1][lv2].pop('mod', None)
 		    if mod_val != None:
+			isModified = True
 			if lv1.startswith('alarm'):
 			    logger.debug("cmi: reset " + lv1)
 			    al_a.setAlarm(lv1)
+
+	if isModified: c_m.saveConfig()
+
+    @staticmethod
+    def saveConfig():
+	logger = logging.getLogger(__name__)
+	logger.debug("saveConfig:")
+	with open(c_m._conf_fname, 'w') as fh:
+	    fh.write(pickle.dumps(c_m._c))
 
     @staticmethod
     def redraw_display():
@@ -768,7 +801,6 @@ class al_a:
 		if al_a._key_count == 3:
 		    al_a._submode = 0
 		    al_a._key_count = 0
-#		    al_a.stop_player()
 		    al_a.setAlarm(None)         # 今回の動作は終了させて次回を再スケジュール
 		    d_m.change_state(c_m.get('initial_dm_state'))
 	    else:
@@ -987,7 +1019,7 @@ class al_a:
 ######################################################################
 #  MAIN
 
-logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p3.log',level=logging.INFO)
+logging.basicConfig(format='%(asctime)s %(funcName)s %(message)s', filename='/tmp/p3.log',level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 
