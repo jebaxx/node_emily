@@ -304,7 +304,7 @@ class d_m():
 
 	logger.debug("change_state:next_state="+d_m._state)
 
-	ld.clear_display()
+#	ld.clear_display()
 
 	if d_m._state == 'config':
 	    d_m.disable_hsd()
@@ -332,7 +332,7 @@ class d_m():
 		c_m._c['clock_style']['value'] -= 1
 		if c_m._c['clock_style']['value'] == -1: c_m._c['clock_style']['value'] = len(d_m._clock_form) - 1
 
-	    ld.clear_display()
+#	    ld.clear_display()
 	    d_m.redraw_display()
 
 	elif d_m._state == 'sensor':
@@ -464,13 +464,13 @@ class c_m:
     _b['alarm']['alarm1']['sw '] = { 'value':'OFF', 'candidate':( 'ON', 'OFF' ) }
     _b['alarm']['alarm1']['wek'] = { 'value':'wek', 'candidate':( 'mon', 'tue', 'wed', 'thr', 'fri', 'sat', 'sun', 'wek', 'hol', 'tst') }
     _b['alarm']['alarm1']['h '] = { 'value':6, 'range':( 0, 23 ) }
-    _b['alarm']['alarm1']['m '] = { 'value':45, 'range':( 0, 59 ) }
+    _b['alarm']['alarm1']['m '] = { 'value':30, 'range':( 0, 59 ) }
 
     _b['alarm']['alarm2'] = OrderedDict()
     _b['alarm']['alarm2']['sw '] = { 'value':'OFF', 'candidate':( 'ON', 'OFF' ) }
     _b['alarm']['alarm2']['wek'] = { 'value':'wek', 'candidate':( 'mon', 'tue', 'wed', 'thr', 'fri', 'sat', 'sun', 'wek', 'hol') }
-    _b['alarm']['alarm2']['h '] = { 'value':7, 'range':( 0, 23 ) }
-    _b['alarm']['alarm2']['m '] = { 'value':30, 'range':( 0, 59 ) }
+    _b['alarm']['alarm2']['h '] = { 'value':6, 'range':( 0, 23 ) }
+    _b['alarm']['alarm2']['m '] = { 'value':45, 'range':( 0, 59 ) }
 
     _b['alarm']['alarm3'] = OrderedDict()
     _b['alarm']['alarm3']['sw '] = { 'value':'OFF', 'candidate':( 'ON', 'OFF' ) }
@@ -652,6 +652,7 @@ class c_m:
     def redraw_display():
 
 	ld.set_double_height(0)
+	ld.clear_display()
 	c_m.refresh_display()
 
     @staticmethod
@@ -753,11 +754,9 @@ class al_a:
 
 	if al_a._mode == 'alarm':
 	    # 'alarm'中にボタンを押されたら'snooze'に移行
-	    al_a._mode = 'snooze'
 	    al_a._submode = key_status
 	    al_a._key_count = 1
 	    al_a.stop_player()
-	    al_a.clear_speaker_level()
 	    al_a.setAlarm('snooze')     # 次の鳴動時間まで待機
 	    ld.clear_display()
 	    al_a.refresh_display()
@@ -769,8 +768,7 @@ class al_a:
 		if al_a._key_count == 3:
 		    al_a._submode = 0
 		    al_a._key_count = 0
-		    al_a.stop_player()
-		    al_a._mode = 'none'
+#		    al_a.stop_player()
 		    al_a.setAlarm(None)         # 今回の動作は終了させて次回を再スケジュール
 		    d_m.change_state(c_m.get('initial_dm_state'))
 	    else:
@@ -783,6 +781,7 @@ class al_a:
     def redraw_display():
 
 	ld.set_double_height(0)
+	ld.clear_display()
 	al_a.refresh_display()
 
     #
@@ -805,7 +804,7 @@ class al_a:
 	    ld.write_char(str(int(al_a._recent_val - time.time())), 1, 0)
 
 	else:
-	    # 動作待ち状態での表示
+	    # 動作待ち（アラーム待機、又は予約なし）
 	    iter_q = iter(al_a._ordered_queue)
 	    try:
 		next_key = next(iter_q)
@@ -835,22 +834,23 @@ class al_a:
 
 	if al_a._mode == 'alarm': 
 	    if al_a._start_time + 60 < ts:
+		# 60秒鳴動後に停止⇒'snooze'モードに移行
 		al_a.stop_player()
-		al_a._mode = 'snooze'
 		al_a.setAlarm('snooze')
 		d_m.change_state('alarm')
 	    elif d_m._state == 'alarm':
-		if al_a._ts_monitor != ts:
-		    ld.write_char(datetime.now().strftime("%m/%d %H:%M"), 1, 0)
-		    al_a._ts_monitor = ts
+		# アラーム表示中
+		pass
 
 	elif al_a._recent_val is not None and ts >= al_a._recent_val:
+	    # 'snooze' -> 'alarm'
 	    al_a._mode = 'alarm'
 	    d_m.change_state('alarm')
 	    al_a._start_time = ts
 	    al_a.exec_player()
 
 	elif al_a._mode == 'snooze' and d_m._state == 'alarm':
+	    # 'snooze'中カウントダウン表示
 	    if al_a._ts_monitor != ts:
 		ld.write_char(str(int(al_a._recent_val - ts))+" ", 1, 0)
 		al_a._ts_monitor = ts
@@ -871,6 +871,7 @@ class al_a:
     def stop_player():
 
 	al_a._proc.terminate()
+	al_a.clear_speaker_level()
 
     #
     # reschedule the alarm
@@ -882,12 +883,15 @@ class al_a:
 	logger.debug("setAlarm:"+str(alarm_name))
 
 	if alarm_name == 'snooze':
+	    al_a._mode = 'snooze'
 	    dt = datetime.now()
 	    dt += timedelta(minutes=5)
 	    ts = time.mktime(dt.timetuple())
 	    al_a._recent_val = ts
 	    logger.debug("snooze:" +  str(ts))
 	    return                     # 'snooze'の場合は_recent_valのみを変更してqueueの中身は中身はそのまま
+
+	al_a._mode = 'none'
 
 	if alarm_name == None or alarm_name == 'alarm1':
 	    if c_m._c['alarm']['alarm1']['sw ']['value'] == 'ON':
