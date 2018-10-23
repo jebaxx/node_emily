@@ -326,11 +326,9 @@ class d_m():
 	    if key_state & 0b001010 :
 		c_m._c['clock_style']['value'] += 1
 		if c_m._c['clock_style']['value'] == len(d_m._clock_form): c_m._c['clock_style']['value'] = 0
-		c_m.saveConfig()
 	    elif key_state & 0b010100 :
 		c_m._c['clock_style']['value'] -= 1
 		if c_m._c['clock_style']['value'] == -1: c_m._c['clock_style']['value'] = len(d_m._clock_form) - 1
-		c_m.saveConfig()
 
 	    d_m.redraw_display()
 
@@ -338,19 +336,15 @@ class d_m():
 	    if key_state & 0b000010 :
 		c_m._c['sens_style']['clock']['value'] += 1
 		if c_m._c['sens_style']['clock']['value'] == len(d_m._clock_form)+1 : c_m._c['sens_style']['clock']['value'] = 0
-		c_m.saveConfig()
 	    elif key_state & 0b000100 :
 		c_m._c['sens_style']['clock']['value'] -= 1
 		if c_m._c['sens_style']['clock']['value'] == -1 : c_m._c['sens_style']['clock']['value'] = len(d_m._clock_form)
-		c_m.saveConfig()
 	    elif key_state & 0b001000 :
 		c_m._c['sens_style']['sens']['value'] += 1
 		if c_m._c['sens_style']['sens']['value'] == len(d_m._sens_form) : c_m._c['sens_style']['sens']['value'] = 0
-		c_m.saveConfig()
 	    elif key_state & 0b010000 :
 		c_m._c['sens_style']['sens']['value'] -= 1
 		if c_m._c['sens_style']['sens']['value'] == -1 : c_m._c['sens_style']['sens']['value'] = len(d_m._sens_form) - 1
-		c_m.saveConfig()
 
 	    d_m.redraw_display()
 
@@ -1025,18 +1019,16 @@ logger.addHandler(logging.StreamHandler())
 
 __i2c = smbus.SMBus(1)
 
+ld.init(__i2c)
 c_m.init()
 al_a.init(__i2c)
-
-ld.init(__i2c)
-
 d_m.init(__i2c)
-m_time = (time.time() // 60)
 
 time.sleep(5)
 d_m.resume_hsd()
 
 try:
+    m_time = (time.time() // 60)
     while 1:
 	time.sleep(0.25)
 	ts = time.time()
