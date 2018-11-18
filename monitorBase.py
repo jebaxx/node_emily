@@ -433,7 +433,7 @@ def postToGAE(temp_s, temp_c, humidity, sensCount):
 	response = requests.post(postUrl, data = params)
     except EnvironmentError:
 	logger.warning("connection error 1")
-	sleep(5)
+	time.sleep(5)
 	try:
 	    response = requests.post(postUrl, data = params)
 	except EnvironmentError:
