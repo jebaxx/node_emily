@@ -219,8 +219,8 @@ class d_m():
 
     NUM_BUTTONS = 5
 
-    _clock_form = [	'%m/%d %H:%M %a',
-			' %m/%d %H:%M %a',
+    _clock_form = [	'%m/%d %a %H:%M',
+			' %m/%d %a %H:%M',
 			'%m/%d %H:%M',
 			'  %m/%d %H:%M',
 			'    %m/%d %H:%M',
@@ -246,9 +246,7 @@ class d_m():
 	GPIO.add_event_detect( 27, GPIO.FALLING, callback = d_m.button_callback )
 	ld.init(__i2c)
 	d_m._current_mode = str(c_m.get('hsd_mode'))
-	if d_m._state == 'clock' or d_m._state == 'sensor' : d_m.redraw_display()
-	elif d_m._state == 'config' : c_m.redraw_display()
-	elif d_m._state == 'alarm' : al_a.redraw_display()
+	d_m.redraw_display()
 
     #
     #   expected to be called periodically
@@ -304,15 +302,7 @@ class d_m():
 
 	logger.debug("change_state:next_state="+d_m._state)
 
-	if d_m._state == 'config':
-	    d_m.disable_hsd()
-	    c_m.redraw_display()
-	elif d_m._state == 'alarm':
-	    d_m.disable_hsd()
-	    al_a.redraw_display()
-	else:	# 'sensor' or 'alarm'
-	    d_m.enable_hsd()
-	    d_m.redraw_display()
+	d_m.redraw_display()
 
 
     #
@@ -355,12 +345,15 @@ class d_m():
     def redraw_display():
 
 	logger = logging.getLogger(__name__)
-	ld.clear_display()
-	ld.cursor_sw(0)
-	if d_m._state == 'clock' or c_m._c['sens_style']['clock']['value'] == 0 : ld.set_double_height(1)
-	else			: ld.set_double_height(0)
-
-	d_m.refresh_display()
+	if   d_m._state == 'config' : c_m.redraw_display()
+	elif d_m._state == 'alarm'  : al_a.redraw_display()
+	else :
+	    d_m.enable_hsd()
+	    ld.clear_display()
+	    ld.cursor_sw(0)
+	    if d_m._state == 'clock' or c_m._c['sens_style']['clock']['value'] == 0 : ld.set_double_height(1)
+	    else			: ld.set_double_height(0)
+	    d_m.refresh_display()
 
     @staticmethod
     def read_sens_data():
@@ -678,8 +671,10 @@ class c_m:
     @staticmethod
     def redraw_display():
 
-	ld.set_double_height(0)
 	ld.clear_display()
+	ld.cursor_sw(0)
+	ld.set_double_height(0)
+	d_m.disable_hsd()
 	c_m.refresh_display()
 
     @staticmethod
@@ -806,8 +801,10 @@ class al_a:
     @staticmethod
     def redraw_display():
 
-	ld.set_double_height(0)
 	ld.clear_display()
+	ld.cursor_sw(0)
+	ld.set_double_height(0)
+	d_m.disable_hsd()
 	al_a.refresh_display()
 
     #
@@ -1019,16 +1016,16 @@ logger.addHandler(logging.StreamHandler())
 
 __i2c = smbus.SMBus(1)
 
-ld.init(__i2c)
 c_m.init()
 al_a.init(__i2c)
+ld.init(__i2c)
 d_m.init(__i2c)
 
 time.sleep(5)
 d_m.resume_hsd()
+m_time = (time.time() // 60)
 
 try:
-    m_time = (time.time() // 60)
     while 1:
 	time.sleep(0.25)
 	ts = time.time()
