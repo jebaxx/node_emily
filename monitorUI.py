@@ -7,6 +7,7 @@ import logging
 import time
 import RPi.GPIO as GPIO
 import smbus
+import threading
 from collections import OrderedDict
 from datetime import datetime
 from datetime import timedelta
@@ -124,7 +125,7 @@ class ld():
     def init_1602() :
 
 	ld.DH  = 0
-	ld.DHD = 1
+	ld.set_shift_mode()
 	ld.set_Line_mode_1_2()
 	ld.clear_display()
 	ld.ms_delay(20)
@@ -185,19 +186,34 @@ class ld():
 
     @staticmethod
     def set_location(l, c):
-	c = c + 0x80        # 1st line is start with 0x80
+	c = c + 0x80		# 1st line is start with 0x80
 	if l == 1:
-	    c = c + 0x40    # 2nd line is start with 0xc0
-        
+	    c = c + 0x40	# 2nd line is start with 0xc0
+
 	ld.so_cmd(c)
 
     @staticmethod
     def write_char(str, l = None, c = None):
-        
 	if (c != None) :
 	    ld.set_location(l, c)
 
 	ld._i2c.write_i2c_block_data(ld.i2cAddr_LD, 0x40, map(ord, str))
+
+    @staticmethod
+    def set_shift_mode():
+	ld.DHD = 1
+	ld.so_cmd(0x20 | ld.N | (ld.BE & 0) | ld.RE       | (ld.REV & 0))			# RE = 1
+	ld.so_cmd(0x10 | ld.UD1 | ld.UD2 | ld.DHD)						# DHD = 1 : display shift mode
+	ld.so_cmd(0x20 | ld.N | ld.DH       | (ld.RE & 0) | (ld.IS & 0))			# RE = 0
+
+    @staticmethod
+    def shift_Right():
+	ld.so_cmd(0x10 | (ld.SC & ld.SC) | (ld.RL & ld.RL))
+
+    @staticmethod
+    def shift_Left():
+	ld.so_cmd(0x10 | (ld.SC & ld.SC) | (ld.RL & 0))
+
 
 ######################################################################
 #  display manager class
@@ -235,6 +251,10 @@ class d_m():
 			' {temp:05.2f}C   {hum:04.1f}%' ,
 			'  {temp:05.2f}C  {hum:04.1f}%' ]
 
+    _th = None			# LED描画用スレッド
+    _drw_event = None		# 描画開始指示用イベントオブジェクト
+    _drw_cond  = None		# 描画中止指示用コンディションオブジェクト
+    _transit_state = None	# 画面遷移状態（None: 停止中、drawing: 描画中、interrupt: 中断要求中、canceled: 中断要求を受領済）
 
     @staticmethod
     def init(__i2c) :
@@ -247,6 +267,63 @@ class d_m():
 	ld.init(__i2c)
 	d_m._current_mode = str(c_m.get('hsd_mode'))
 	d_m.redraw_display()
+
+	d_m._drw_event = threading.Event()
+	d_m._drw_cond  = threading.Condition()
+	d_m._th = threading.Thread(target = d_m.transit_action)
+	d_m._th.setDaemon(True)
+	d_m._th.start()
+
+    #
+    #   LED panel redrawing with 'transit action'
+    #
+    @staticmethod
+    def transit_action():
+	logger = logging.getLogger(__name__)
+
+	while True:
+	    logger.info("transit_wait")
+	    d_m._drw_event.wait()				# 描画指示待ち
+	    d_m._drw_event.clear()				# 描画指示を受けて、Eventをリセットする
+	    logger.info("transit_start")
+
+	    # transit描画開始
+	    ld.clear_display()
+	    ld.cursor_sw(0)
+	    ld.set_double_height(1)
+	    ld.write_char(d_m._state, 0, 16)
+
+	    # transitループ
+	    for i in range(8) :
+		with d_m._drw_cond:
+		    if d_m._transit_state == 'interrupt':	# 描画中止指示のチェック
+			logger.info("transit_interrupt")
+			d_m._transit_state = 'canceled'
+			d_m._drw_cond.notify()			# 中止要求受領を通知
+			break
+		ld.shift_Left()
+		ld.shift_Left()
+		time.sleep(0.03)
+
+	    if d_m._transit_state == 'canceled': continue	# 中断指示によるループ脱出
+	    time.sleep(0.40)
+
+	    with d_m._drw_cond:
+		if d_m._transit_state == 'interrupt':		# 描画中止指示のチェック
+		    logger.info("transit_interrupt")
+		    d_m._transit_state = 'canceled'
+		    d_m._drw_cond.notify()			# 中止要求受領を通知
+		    continue
+
+	    d_m.redraw_display()				# 移行先画面描画
+
+	    with d_m._drw_cond:
+		if d_m._transit_state == 'interrupt':		# 中断指示が出ていたが描画完了してしまった時
+		    logger.info("transit_interrupt_but...")
+		    d_m._drw_cond.notify()			# 終了を通知
+
+	    logger.info("transit_end")
+	    d_m._transit_state = None
 
     #
     #   expected to be called periodically
@@ -302,7 +379,15 @@ class d_m():
 
 	logger.debug("change_state:next_state="+d_m._state)
 
-	d_m.redraw_display()
+	with d_m._drw_cond:
+	    if d_m._transit_state is not None:			# スレッドがまだ描画中
+		logger.info("transit_over")
+		d_m._transit_state = 'interrupt'		# 描画中断指示
+		d_m._drw_cond.wait()				# 中断指示受領を待つ
+
+	    d_m._transit_state = 'drawing'
+	    logger.info("transit_trigger")
+	    d_m._drw_event.set()				# 描画指示を出して終了
 
 
     #
@@ -745,16 +830,15 @@ class al_a:
 
     __i2c = None
     _mode = 'none'
-    _cand = ('none', 'alarm', 'snooze')
+    _cand = ('none', 'alarm', 'snooze')		# (非鳴動中, 鳴動中, SNOOZE待機中)
 
-    # button status management
-    _submode = 0
-    _key_count = 0
+    _submode = 0		# SNOOZE解除キー（どのキーでも良いが連続して3度同じキーが押されたら解除）
+    _key_count = 0		# 3度押されるまでのカウンタ
 
-    _queue = {}
-    _ordered_queue = None
-    _recent_val = None		# 直近のアラーム発動時刻
-    _recent_alarm = None
+    _queue = {}			# アラーム毎の設定時刻
+    _ordered_queue = None	# _queueの中身を発動時刻順に並べ替えたOrderedDictクラス
+    _recent_val = None		# 直近のアラーム発動時刻  Alarmとsnoozeの両方で使われる  setAlarmメソッドで設定される
+    _recent_alarm = None	# 直近に発動時刻が来るアラーム名  setAlarmメソッドで設定される
     _start_time = 0		# Alarm鳴動開始時刻
     _ts_monitor = 0		# 一回/Sec画面を更新するための時刻
 
@@ -866,7 +950,7 @@ class al_a:
 		pass
 
 	elif al_a._recent_val is not None and ts >= al_a._recent_val:
-	    # 'snooze' -> 'alarm'
+	    # mode = 'none' or 'snooze' -> 'alarm'
 	    al_a._mode = 'alarm'
 	    d_m.change_state('alarm')
 	    al_a._start_time = ts
@@ -1028,6 +1112,11 @@ m_time = (time.time() // 60)
 try:
     while 1:
 	time.sleep(0.25)
+
+	# 描画スレッドの動作をチェック
+	if d_m._transit_state is not None:
+	    continue				# 描画スレッド動作中ならば、以下の処理を一回スキップ
+
 	ts = time.time()
 	d_m.polling(ts)
 	al_a.polling(ts)
