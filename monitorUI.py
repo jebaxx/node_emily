@@ -282,10 +282,10 @@ class d_m():
 	logger = logging.getLogger(__name__)
 
 	while True:
-	    logger.info("transit_wait")
+	    logger.debug("transit_wait")
 	    d_m._drw_event.wait()				# 描画指示待ち
 	    d_m._drw_event.clear()				# 描画指示を受けて、Eventをリセットする
-	    logger.info("transit_start")
+	    logger.debug("transit_start")
 
 	    # transit描画開始
 	    ld.clear_display()
@@ -294,35 +294,30 @@ class d_m():
 	    ld.write_char(d_m._state, 0, 16)
 
 	    # transitループ
-	    for i in range(8) :
+	    for i in range(18) :
 		with d_m._drw_cond:
 		    if d_m._transit_state == 'interrupt':	# 描画中止指示のチェック
-			logger.info("transit_interrupt")
+			logger.debug("transit_interrupt")
 			d_m._transit_state = 'canceled'
 			d_m._drw_cond.notify()			# 中止要求受領を通知
 			break
-		ld.shift_Left()
-		ld.shift_Left()
-		time.sleep(0.03)
+
+		if i < 8:
+		    ld.shift_Left()
+		    ld.shift_Left()
+
+		time.sleep(0.04)
 
 	    if d_m._transit_state == 'canceled': continue	# 中断指示によるループ脱出
-	    time.sleep(0.40)
-
-	    with d_m._drw_cond:
-		if d_m._transit_state == 'interrupt':		# 描画中止指示のチェック
-		    logger.info("transit_interrupt")
-		    d_m._transit_state = 'canceled'
-		    d_m._drw_cond.notify()			# 中止要求受領を通知
-		    continue
 
 	    d_m.redraw_display()				# 移行先画面描画
 
 	    with d_m._drw_cond:
 		if d_m._transit_state == 'interrupt':		# 中断指示が出ていたが描画完了してしまった時
-		    logger.info("transit_interrupt_but...")
+		    logger.debug("transit_interrupt_but...")
 		    d_m._drw_cond.notify()			# 終了を通知
 
-	    logger.info("transit_end")
+	    logger.debug("transit_end")
 	    d_m._transit_state = None
 
     #
@@ -381,12 +376,12 @@ class d_m():
 
 	with d_m._drw_cond:
 	    if d_m._transit_state is not None:			# スレッドがまだ描画中
-		logger.info("transit_over")
+		logger.debug("transit_over")
 		d_m._transit_state = 'interrupt'		# 描画中断指示
 		d_m._drw_cond.wait()				# 中断指示受領を待つ
 
 	    d_m._transit_state = 'drawing'
-	    logger.info("transit_trigger")
+	    logger.debug("transit_trigger")
 	    d_m._drw_event.set()				# 描画指示を出して終了
 
 
